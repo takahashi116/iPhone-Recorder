@@ -33,6 +33,9 @@ let state = {
     accessToken: null,
     selectedFolderId: null,
     selectedFolderName: null,
+
+    // Pending upload (when token expired during recording)
+    pendingRecording: null,
 };
 
 // ============================================
@@ -255,9 +258,19 @@ async function handleRecordingComplete() {
     // Display recording
     displayRecording(recording);
 
-    // Auto upload if enabled
-    if (elements.autoUploadCheck.checked && state.accessToken && state.selectedFolderId) {
+    // Check if token is still valid
+    const isTokenValid = checkTokenValidity();
+
+    // Auto upload if enabled AND token is valid
+    if (elements.autoUploadCheck.checked && state.accessToken && state.selectedFolderId && isTokenValid) {
         await uploadToDrive(recording);
+    } else if (elements.autoUploadCheck.checked && (!isTokenValid || !state.accessToken)) {
+        // Token expired - save recording for later upload
+        state.pendingRecording = recording;
+        showTokenExpiredUI();
+        // Still download as backup
+        downloadRecording(recording);
+        showToast('認証切れ：再ログイン後にアップロードできます', 'warning');
     } else {
         // Create download link
         downloadRecording(recording);
@@ -268,6 +281,34 @@ async function handleRecordingComplete() {
 
     // Reset timer display
     state.elapsedTime = 0;
+}
+
+function checkTokenValidity() {
+    const cachedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (!cachedToken) return false;
+
+    try {
+        const tokenData = JSON.parse(cachedToken);
+        return tokenData.expires_at && Date.now() < tokenData.expires_at;
+    } catch (e) {
+        return false;
+    }
+}
+
+function showTokenExpiredUI() {
+    // Reset auth UI to show login button again
+    elements.authStatus.classList.remove('connected');
+    elements.authStatus.querySelector('.auth-icon').textContent = '⚠️';
+    elements.authStatus.querySelector('.auth-text').textContent = '認証切れ - 再ログインが必要';
+    elements.googleAuthBtn.style.display = 'block';
+    elements.googleAuthBtn.innerHTML = `
+        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" class="google-icon">
+        <span>再ログインしてアップロード</span>
+    `;
+
+    // Clear expired token
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    state.accessToken = null;
 }
 
 // ============================================
@@ -550,6 +591,26 @@ function updateAuthUI() {
     elements.googleAuthBtn.style.display = 'none';
     elements.folderSelector.style.display = 'block';
     elements.autoUploadToggle.style.display = 'block';
+
+    // Check if there's a pending recording to upload
+    if (state.pendingRecording) {
+        uploadPendingRecording();
+    }
+}
+
+async function uploadPendingRecording() {
+    if (!state.pendingRecording) return;
+
+    const recording = state.pendingRecording;
+    showToast('待機中の録音をアップロード中...', 'success');
+
+    try {
+        await uploadToDrive(recording);
+        state.pendingRecording = null; // Clear after successful upload
+    } catch (err) {
+        console.error('Failed to upload pending recording:', err);
+        showToast('アップロードに失敗しました', 'error');
+    }
 }
 
 function loadSavedToken() {
