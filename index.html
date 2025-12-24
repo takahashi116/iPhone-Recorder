@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>📱 iPhone レコーダー</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <!-- Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- Google API Client -->
+    <script src="https://apis.google.com/js/api.js" async defer></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <h1>🎙️ iPhone レコーダー</h1>
+            <p class="subtitle">Google Drive 連携</p>
+        </header>
+
+        <!-- Warning Banner -->
+        <div class="warning-banner" id="warningBanner">
+            <span class="warning-icon">⚠️</span>
+            <span>録音中は画面を閉じないでください</span>
+        </div>
+
+        <!-- Status Section -->
+        <section class="status-section">
+            <div class="status-indicator" id="statusIndicator">
+                <div class="status-dot"></div>
+                <span class="status-text">待機中</span>
+            </div>
+            <div class="timer" id="timer">00:00:00</div>
+        </section>
+
+        <!-- Visualizer -->
+        <div class="visualizer-container">
+            <canvas id="visualizer"></canvas>
+        </div>
+
+        <!-- Recording Controls -->
+        <section class="controls-section">
+            <button class="record-btn" id="recordBtn" disabled>
+                <span class="btn-icon">🎤</span>
+                <span class="btn-text">録音開始</span>
+            </button>
+        </section>
+
+        <!-- Google Drive Section -->
+        <section class="drive-section">
+            <h2>📁 Google Drive 設定</h2>
+
+            <div class="auth-status" id="authStatus">
+                <span class="auth-icon">🔒</span>
+                <span class="auth-text">未接続</span>
+            </div>
+
+            <button class="google-btn" id="googleAuthBtn">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google"
+                    class="google-icon">
+                <span>Googleでログイン</span>
+            </button>
+
+            <div class="folder-selector" id="folderSelector" style="display: none;">
+                <div class="selected-folder" id="selectedFolder">
+                    <span class="folder-icon">📂</span>
+                    <span class="folder-name">フォルダ未選択</span>
+                </div>
+                <button class="select-folder-btn" id="selectFolderBtn">
+                    フォルダを選択
+                </button>
+            </div>
+
+            <div class="auto-upload-toggle" id="autoUploadToggle" style="display: none;">
+                <label class="toggle-label">
+                    <input type="checkbox" id="autoUploadCheck" checked>
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-text">録音後に自動アップロード</span>
+                </label>
+            </div>
+        </section>
+
+        <!-- Recordings List -->
+        <section class="recordings-section" id="recordingsSection" style="display: none;">
+            <h2>📼 録音履歴</h2>
+            <div class="recordings-list" id="recordingsList"></div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <p>iPhone Safari 対応 | 最大2時間録音可能</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
