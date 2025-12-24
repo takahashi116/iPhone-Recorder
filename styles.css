@@ -64,6 +64,28 @@ body {
     margin-top: 5px;
 }
 
+/* Browser Warning Banner (iOS Chrome) */
+.browser-warning {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(99, 102, 241, 0.2) 100%);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    border-radius: 12px;
+    padding: 12px 15px;
+    margin-bottom: 15px;
+    font-size: 0.85rem;
+}
+
+.browser-warning button {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0 5px;
+}
+
 /* Warning Banner */
 .warning-banner {
     display: none;

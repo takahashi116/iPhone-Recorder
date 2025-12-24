@@ -13,6 +13,7 @@ const GOOGLE_API_KEY = 'AIzaSyB6YPsmEy62ltuh1aqZX6Z5Hjx0P9mt0Lw';
 
 const RECORDINGS_STORAGE_KEY = 'iphone-recorder-recordings';
 const FOLDER_STORAGE_KEY = 'iphone-recorder-folder';
+const TOKEN_STORAGE_KEY = 'iphone-recorder-token';
 
 let state = {
     isRecording: false,
@@ -64,13 +65,29 @@ const elements = {
 // ============================================
 
 document.addEventListener('DOMContentLoaded', () => {
+    checkBrowserCompatibility();
     loadSavedFolder();
+    loadSavedToken();
     loadRecordings();
     setupEventListeners();
     checkMicrophonePermission();
     initVisualizer();
     initGoogleApi();
 });
+
+function checkBrowserCompatibility() {
+    const ua = navigator.userAgent;
+    const isIOS = /iPad|iPhone|iPod/.test(ua);
+    const isChrome = /CriOS/.test(ua); // Chrome on iOS
+
+    if (isIOS && isChrome) {
+        const warning = document.getElementById('browserWarning');
+        if (warning) {
+            warning.style.display = 'flex';
+        }
+        console.warn('iOS Chrome detected - microphone may not work properly. Safari is recommended.');
+    }
+}
 
 function setupEventListeners() {
     elements.recordBtn.addEventListener('click', toggleRecording);
@@ -476,28 +493,83 @@ function handleGoogleAuth() {
         return;
     }
 
-    // Request access token
-    state.tokenClient.requestAccessToken({ prompt: 'consent' });
+    // Check if we have a cached token first
+    const cachedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (cachedToken) {
+        try {
+            const tokenData = JSON.parse(cachedToken);
+            // Check if token is still valid (within 50 minutes, tokens last 60 min)
+            if (tokenData.expires_at && Date.now() < tokenData.expires_at) {
+                console.log('Using cached token');
+                state.accessToken = tokenData.access_token;
+                updateAuthUI();
+                return;
+            } else {
+                console.log('Cached token expired, requesting new one');
+                localStorage.removeItem(TOKEN_STORAGE_KEY);
+            }
+        } catch (e) {
+            console.error('Error parsing cached token:', e);
+            localStorage.removeItem(TOKEN_STORAGE_KEY);
+        }
+    }
+
+    // Request access token - use 'select_account' instead of 'consent' for smoother UX
+    state.tokenClient.requestAccessToken({ prompt: '' });
 }
 
 function handleTokenResponse(response) {
     if (response.error) {
         console.error('Token error:', response);
-        showToast('認証に失敗しました', 'error');
+        // If error, try again with consent prompt
+        if (state.tokenClient) {
+            console.log('Retrying with consent prompt...');
+            state.tokenClient.requestAccessToken({ prompt: 'consent' });
+        }
         return;
     }
 
     state.accessToken = response.access_token;
 
-    // Update UI
+    // Save token to localStorage with expiry (tokens last 60 minutes, save for 50)
+    const tokenData = {
+        access_token: response.access_token,
+        expires_at: Date.now() + (50 * 60 * 1000) // 50 minutes from now
+    };
+    localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokenData));
+    console.log('Token saved to localStorage');
+
+    updateAuthUI();
+    showToast('Googleアカウントに接続しました ✅');
+}
+
+function updateAuthUI() {
     elements.authStatus.classList.add('connected');
     elements.authStatus.querySelector('.auth-icon').textContent = '✅';
     elements.authStatus.querySelector('.auth-text').textContent = '接続済み';
     elements.googleAuthBtn.style.display = 'none';
     elements.folderSelector.style.display = 'block';
     elements.autoUploadToggle.style.display = 'block';
+}
 
-    showToast('Googleアカウントに接続しました ✅');
+function loadSavedToken() {
+    const cachedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (cachedToken) {
+        try {
+            const tokenData = JSON.parse(cachedToken);
+            if (tokenData.expires_at && Date.now() < tokenData.expires_at) {
+                console.log('Restored token from cache');
+                state.accessToken = tokenData.access_token;
+                updateAuthUI();
+            } else {
+                console.log('Cached token expired');
+                localStorage.removeItem(TOKEN_STORAGE_KEY);
+            }
+        } catch (e) {
+            console.error('Error loading cached token:', e);
+            localStorage.removeItem(TOKEN_STORAGE_KEY);
+        }
+    }
 }
 
 function openFolderPicker() {

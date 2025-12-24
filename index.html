@@ -24,6 +24,13 @@
             <p class="subtitle">Google Drive 連携</p>
         </header>
 
+        <!-- Browser Warning Banner (for iOS Chrome users) -->
+        <div class="browser-warning" id="browserWarning" style="display: none;">
+            <span class="warning-icon">📱</span>
+            <span>iPhoneではSafariをお使いください。Chromeではマイクが使用できません。</span>
+            <button onclick="document.getElementById('browserWarning').style.display='none'">✕</button>
+        </div>
+
         <!-- Warning Banner -->
         <div class="warning-banner" id="warningBanner">
             <span class="warning-icon">⚠️</span>
