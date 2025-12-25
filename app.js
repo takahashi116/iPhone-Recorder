@@ -259,20 +259,114 @@ function getSupportedMimeType() {
 async function handleRecordingComplete() {
     console.log('handleRecordingComplete called');
     
+    updateStatus('MP3に変換中...', false);
+    
     const mimeType = state.mediaRecorder.mimeType || 'audio/webm';
     const blob = new Blob(state.audioChunks, { type: mimeType });
 
-    // Store blob and metadata temporarily for modal
-    state.pendingBlob = blob;
-    state.pendingMimeType = mimeType;
-    state.pendingDuration = state.elapsedTime;
-    state.pendingDate = new Date();
+    try {
+        // Convert to MP3
+        const mp3Blob = await convertToMp3(blob);
+        
+        // Store blob and metadata temporarily for modal
+        state.pendingBlob = mp3Blob;
+        state.pendingMimeType = 'audio/mpeg';
+        state.pendingDuration = state.elapsedTime;
+        state.pendingDate = new Date();
 
-    // Show filename input modal (with delay for iOS Safari)
-    setTimeout(() => {
-        console.log('Showing filename modal');
-        showFilenameModal();
-    }, 100);
+        // Show filename input modal (with delay for iOS Safari)
+        setTimeout(() => {
+            console.log('Showing filename modal');
+            showFilenameModal();
+        }, 100);
+    } catch (err) {
+        console.error('MP3 conversion failed:', err);
+        showToast('MP3変換に失敗しました。元の形式で保存します。', 'warning');
+        
+        // Fallback to original format
+        state.pendingBlob = blob;
+        state.pendingMimeType = mimeType;
+        state.pendingDuration = state.elapsedTime;
+        state.pendingDate = new Date();
+        
+        setTimeout(() => {
+            showFilenameModal();
+        }, 100);
+    }
+}
+
+// ============================================
+// MP3 Conversion
+// ============================================
+
+async function convertToMp3(blob) {
+    console.log('Converting to MP3...');
+    
+    // Decode audio data
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    
+    // Get audio data
+    const numberOfChannels = audioBuffer.numberOfChannels;
+    const sampleRate = audioBuffer.sampleRate;
+    const length = audioBuffer.length;
+    
+    console.log(`Audio: ${numberOfChannels}ch, ${sampleRate}Hz, ${length} samples`);
+    
+    // Get channel data
+    const leftChannel = audioBuffer.getChannelData(0);
+    const rightChannel = numberOfChannels > 1 ? audioBuffer.getChannelData(1) : leftChannel;
+    
+    // Convert Float32Array to Int16Array
+    const leftInt16 = floatTo16BitPCM(leftChannel);
+    const rightInt16 = floatTo16BitPCM(rightChannel);
+    
+    // Initialize LAME encoder
+    const mp3encoder = new lamejs.Mp3Encoder(numberOfChannels, sampleRate, 128);
+    const mp3Data = [];
+    
+    const sampleBlockSize = 1152;
+    
+    for (let i = 0; i < leftInt16.length; i += sampleBlockSize) {
+        const leftChunk = leftInt16.subarray(i, i + sampleBlockSize);
+        const rightChunk = rightInt16.subarray(i, i + sampleBlockSize);
+        
+        let mp3buf;
+        if (numberOfChannels === 1) {
+            mp3buf = mp3encoder.encodeBuffer(leftChunk);
+        } else {
+            mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+        }
+        
+        if (mp3buf.length > 0) {
+            mp3Data.push(mp3buf);
+        }
+    }
+    
+    // Flush remaining data
+    const mp3buf = mp3encoder.flush();
+    if (mp3buf.length > 0) {
+        mp3Data.push(mp3buf);
+    }
+    
+    // Create MP3 blob
+    const mp3Blob = new Blob(mp3Data, { type: 'audio/mpeg' });
+    console.log(`MP3 created: ${mp3Blob.size} bytes`);
+    
+    // Close audio context
+    await audioContext.close();
+    
+    return mp3Blob;
+}
+
+function floatTo16BitPCM(float32Array) {
+    const int16Array = new Int16Array(float32Array.length);
+    for (let i = 0; i < float32Array.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32Array[i]));
+        int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    return int16Array;
 }
 
 // ============================================
@@ -760,8 +854,7 @@ async function uploadToDrive(recording) {
     updateStatus('アップロード中...', false);
 
     try {
-        const extension = recording.mimeType.includes('mp4') ? 'mp4' :
-            recording.mimeType.includes('webm') ? 'webm' : 'ogg';
+        const extension = getFileExtension(recording.mimeType);
         const fileName = `${recording.name}.${extension}`;
 
         const metadata = {
@@ -855,8 +948,7 @@ function displayRecording(recording, hasBlob = true) {
 }
 
 function downloadRecording(recording) {
-    const extension = recording.mimeType.includes('mp4') ? 'mp4' :
-        recording.mimeType.includes('webm') ? 'webm' : 'ogg';
+    const extension = getFileExtension(recording.mimeType);
     const fileName = `${recording.name}.${extension}`;
 
     const url = URL.createObjectURL(recording.blob);
@@ -965,4 +1057,12 @@ function formatFileSize(bytes) {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function getFileExtension(mimeType) {
+    if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return 'mp3';
+    if (mimeType.includes('mp4')) return 'mp4';
+    if (mimeType.includes('webm')) return 'webm';
+    if (mimeType.includes('ogg')) return 'ogg';
+    return 'mp3'; // Default to mp3
 }
