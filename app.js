@@ -61,6 +61,11 @@ const elements = {
     // Recordings
     recordingsSection: document.getElementById('recordingsSection'),
     recordingsList: document.getElementById('recordingsList'),
+
+    // Filename Modal
+    filenameModal: document.getElementById('filenameModal'),
+    filenameInput: document.getElementById('filenameInput'),
+    saveFilenameBtn: document.getElementById('saveFilenameBtn'),
 };
 
 // ============================================
@@ -96,6 +101,14 @@ function setupEventListeners() {
     elements.recordBtn.addEventListener('click', toggleRecording);
     elements.googleAuthBtn.addEventListener('click', handleGoogleAuth);
     elements.selectFolderBtn.addEventListener('click', openFolderPicker);
+    
+    // Filename modal events
+    elements.saveFilenameBtn.addEventListener('click', saveRecordingWithFilename);
+    elements.filenameInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            saveRecordingWithFilename();
+        }
+    });
 }
 
 // ============================================
@@ -242,15 +255,55 @@ async function handleRecordingComplete() {
     const mimeType = state.mediaRecorder.mimeType || 'audio/webm';
     const blob = new Blob(state.audioChunks, { type: mimeType });
 
+    // Store blob and metadata temporarily for modal
+    state.pendingBlob = blob;
+    state.pendingMimeType = mimeType;
+    state.pendingDuration = state.elapsedTime;
+    state.pendingDate = new Date();
+
+    // Show filename input modal
+    showFilenameModal();
+}
+
+// ============================================
+// Filename Modal
+// ============================================
+
+function showFilenameModal() {
+    // Set default filename in placeholder
+    const defaultName = `録音_${formatDateForFilename(state.pendingDate)}`;
+    elements.filenameInput.placeholder = defaultName;
+    elements.filenameInput.value = '';
+    elements.filenameModal.style.display = 'flex';
+    
+    // Focus input
+    setTimeout(() => elements.filenameInput.focus(), 100);
+}
+
+function hideFilenameModal() {
+    elements.filenameModal.style.display = 'none';
+    elements.filenameInput.value = '';
+}
+
+async function saveRecordingWithFilename() {
+    // Get filename from input or use default
+    let filename = elements.filenameInput.value.trim();
+    if (!filename) {
+        filename = `録音_${formatDateForFilename(state.pendingDate)}`;
+    }
+
     const recording = {
         id: Date.now().toString(),
-        name: `録音_${formatDateForFilename(new Date())}`,
-        date: new Date().toISOString(),
-        duration: state.elapsedTime,
-        size: blob.size,
-        mimeType: mimeType,
-        blob: blob, // Keep in memory temporarily
+        name: filename,
+        date: state.pendingDate.toISOString(),
+        duration: state.pendingDuration,
+        size: state.pendingBlob.size,
+        mimeType: state.pendingMimeType,
+        blob: state.pendingBlob,
     };
+
+    // Hide modal
+    hideFilenameModal();
 
     // Save to local storage (metadata only)
     saveRecordingMetadata(recording);
@@ -281,6 +334,12 @@ async function handleRecordingComplete() {
 
     // Reset timer display
     state.elapsedTime = 0;
+
+    // Clear pending data
+    state.pendingBlob = null;
+    state.pendingMimeType = null;
+    state.pendingDuration = null;
+    state.pendingDate = null;
 }
 
 function checkTokenValidity() {
@@ -867,11 +926,16 @@ document.head.appendChild(style);
 // ============================================
 
 function formatDateForFilename(date) {
-    const y = date.getFullYear();
-    const m = pad(date.getMonth() + 1);
-    const d = pad(date.getDate());
-    const h = pad(date.getHours());
-    const min = pad(date.getMinutes());
+    // 日本時間（JST = UTC+9）を使用
+    const jstOffset = 9 * 60; // JST is UTC+9
+    const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+    const jstDate = new Date(utc + (jstOffset * 60000));
+    
+    const y = jstDate.getFullYear();
+    const m = pad(jstDate.getMonth() + 1);
+    const d = pad(jstDate.getDate());
+    const h = pad(jstDate.getHours());
+    const min = pad(jstDate.getMinutes());
     return `${y}${m}${d}_${h}${min}`;
 }
 

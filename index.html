@@ -105,6 +105,20 @@
         </footer>
     </div>
 
+    <!-- Filename Input Modal -->
+    <div class="modal-overlay" id="filenameModal" style="display: none;">
+        <div class="modal-content">
+            <h3>📝 ファイル名を入力</h3>
+            <div class="modal-input-group">
+                <input type="text" id="filenameInput" placeholder="ファイル名を入力（空欄で日時）">
+            </div>
+            <p class="modal-hint">未入力の場合は「録音_YYYYMMDD_HHmm」形式になります</p>
+            <div class="modal-actions">
+                <button class="modal-btn modal-btn-primary" id="saveFilenameBtn">保存</button>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 
