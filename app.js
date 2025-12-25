@@ -73,6 +73,11 @@ const elements = {
 // ============================================
 
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOMContentLoaded');
+    console.log('filenameModal element:', elements.filenameModal);
+    console.log('filenameInput element:', elements.filenameInput);
+    console.log('saveFilenameBtn element:', elements.saveFilenameBtn);
+    
     checkBrowserCompatibility();
     loadSavedFolder();
     loadSavedToken();
@@ -252,6 +257,8 @@ function getSupportedMimeType() {
 }
 
 async function handleRecordingComplete() {
+    console.log('handleRecordingComplete called');
+    
     const mimeType = state.mediaRecorder.mimeType || 'audio/webm';
     const blob = new Blob(state.audioChunks, { type: mimeType });
 
@@ -261,8 +268,11 @@ async function handleRecordingComplete() {
     state.pendingDuration = state.elapsedTime;
     state.pendingDate = new Date();
 
-    // Show filename input modal
-    showFilenameModal();
+    // Show filename input modal (with delay for iOS Safari)
+    setTimeout(() => {
+        console.log('Showing filename modal');
+        showFilenameModal();
+    }, 100);
 }
 
 // ============================================
@@ -270,18 +280,30 @@ async function handleRecordingComplete() {
 // ============================================
 
 function showFilenameModal() {
+    console.log('showFilenameModal called');
+    
     // Set default filename in placeholder
     const defaultName = `録音_${formatDateForFilename(state.pendingDate)}`;
     elements.filenameInput.placeholder = defaultName;
     elements.filenameInput.value = '';
-    elements.filenameModal.style.display = 'flex';
     
-    // Focus input
-    setTimeout(() => elements.filenameInput.focus(), 100);
+    // Show modal using class
+    const modal = elements.filenameModal;
+    modal.classList.add('visible');
+    
+    // Scroll to top to ensure modal is visible on iOS
+    window.scrollTo(0, 0);
+    
+    // Focus input with delay for iOS
+    setTimeout(() => {
+        elements.filenameInput.focus();
+    }, 300);
+    
+    console.log('Modal visible class added');
 }
 
 function hideFilenameModal() {
-    elements.filenameModal.style.display = 'none';
+    elements.filenameModal.classList.remove('visible');
     elements.filenameInput.value = '';
 }
 

@@ -593,13 +593,32 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.8);
-    display: flex;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    display: none; /* Hidden by default */
     align-items: center;
     justify-content: center;
     z-index: 10000;
     padding: 20px;
+    /* iOS Safari fixes */
+    -webkit-overflow-scrolling: touch;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+}
+
+.modal-overlay.visible {
+    display: flex;
     animation: fadeIn 0.2s ease;
+}
+
+/* iOS Safari specific fix */
+@supports (-webkit-touch-callout: none) {
+    .modal-overlay {
+        position: absolute;
+        min-height: 100vh;
+        min-height: -webkit-fill-available;
+    }
 }
 
 @keyframes fadeIn {
