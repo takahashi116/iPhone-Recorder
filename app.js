@@ -13,7 +13,6 @@ const GOOGLE_API_KEY = 'AIzaSyB6YPsmEy62ltuh1aqZX6Z5Hjx0P9mt0Lw';
 
 const RECORDINGS_STORAGE_KEY = 'iphone-recorder-recordings';
 const FOLDER_STORAGE_KEY = 'iphone-recorder-folder';
-const TOKEN_STORAGE_KEY = 'iphone-recorder-token';
 
 let state = {
     isRecording: false,
@@ -33,9 +32,14 @@ let state = {
     accessToken: null,
     selectedFolderId: null,
     selectedFolderName: null,
-
-    // Pending upload (when token expired during recording)
-    pendingRecording: null,
+    
+    // Recording flow
+    pendingBlob: null,
+    pendingMimeType: null,
+    pendingDuration: null,
+    pendingDate: null,
+    pendingUploadRecording: null,
+    folderSelectionMode: false,
 };
 
 // ============================================
@@ -50,13 +54,8 @@ const elements = {
     visualizer: document.getElementById('visualizer'),
 
     // Google Drive
-    googleAuthBtn: document.getElementById('googleAuthBtn'),
-    authStatus: document.getElementById('authStatus'),
-    folderSelector: document.getElementById('folderSelector'),
     selectedFolder: document.getElementById('selectedFolder'),
     selectFolderBtn: document.getElementById('selectFolderBtn'),
-    autoUploadToggle: document.getElementById('autoUploadToggle'),
-    autoUploadCheck: document.getElementById('autoUploadCheck'),
 
     // Recordings
     recordingsSection: document.getElementById('recordingsSection'),
@@ -80,7 +79,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     checkBrowserCompatibility();
     loadSavedFolder();
-    loadSavedToken();
     loadRecordings();
     setupEventListeners();
     checkMicrophonePermission();
@@ -104,8 +102,7 @@ function checkBrowserCompatibility() {
 
 function setupEventListeners() {
     elements.recordBtn.addEventListener('click', toggleRecording);
-    elements.googleAuthBtn.addEventListener('click', handleGoogleAuth);
-    elements.selectFolderBtn.addEventListener('click', openFolderPicker);
+    elements.selectFolderBtn.addEventListener('click', handleSelectFolder);
     
     // Filename modal events
     elements.saveFilenameBtn.addEventListener('click', saveRecordingWithFilename);
@@ -114,6 +111,16 @@ function setupEventListeners() {
             saveRecordingWithFilename();
         }
     });
+}
+
+// Handle folder selection button click (authenticate first if needed)
+function handleSelectFolder() {
+    state.folderSelectionMode = true;
+    if (state.tokenClient) {
+        state.tokenClient.requestAccessToken({ prompt: '' });
+    } else {
+        showToast('Google APIの初期化中です。少々お待ちください。', 'warning');
+    }
 }
 
 // ============================================
@@ -333,63 +340,44 @@ async function saveRecordingWithFilename() {
     // Display recording
     displayRecording(recording);
 
-    // Check if token is still valid
-    const isTokenValid = checkTokenValidity();
-
-    // Auto upload if enabled AND token is valid
-    if (elements.autoUploadCheck.checked && state.accessToken && state.selectedFolderId && isTokenValid) {
-        await uploadToDrive(recording);
-    } else if (elements.autoUploadCheck.checked && (!isTokenValid || !state.accessToken)) {
-        // Token expired - save recording for later upload
-        state.pendingRecording = recording;
-        showTokenExpiredUI();
-        // Still download as backup
+    // Check if folder is selected
+    if (!state.selectedFolderId) {
+        showToast('フォルダ未設定のためローカルに保存します', 'warning');
         downloadRecording(recording);
-        showToast('認証切れ：再ログイン後にアップロードできます', 'warning');
-    } else {
-        // Create download link
-        downloadRecording(recording);
+        updateStatus('完了', false);
+        clearPendingData();
+        return;
     }
 
-    updateStatus('完了', false);
-    showToast('録音が完了しました ✅');
+    // Store recording for upload after authentication
+    state.pendingUploadRecording = recording;
+    
+    // Start Google authentication
+    updateStatus('Google認証中...', false);
+    initiateAuthForUpload();
+}
 
-    // Reset timer display
+function initiateAuthForUpload() {
+    if (state.tokenClient) {
+        // Request new access token (prompt: '' for silent if possible, will show UI if needed)
+        state.tokenClient.requestAccessToken({ prompt: '' });
+    } else {
+        showToast('Google APIの初期化に失敗しました', 'error');
+        if (state.pendingUploadRecording) {
+            downloadRecording(state.pendingUploadRecording);
+            state.pendingUploadRecording = null;
+        }
+        updateStatus('完了', false);
+        clearPendingData();
+    }
+}
+
+function clearPendingData() {
     state.elapsedTime = 0;
-
-    // Clear pending data
     state.pendingBlob = null;
     state.pendingMimeType = null;
     state.pendingDuration = null;
     state.pendingDate = null;
-}
-
-function checkTokenValidity() {
-    const cachedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
-    if (!cachedToken) return false;
-
-    try {
-        const tokenData = JSON.parse(cachedToken);
-        return tokenData.expires_at && Date.now() < tokenData.expires_at;
-    } catch (e) {
-        return false;
-    }
-}
-
-function showTokenExpiredUI() {
-    // Reset auth UI to show login button again
-    elements.authStatus.classList.remove('connected');
-    elements.authStatus.querySelector('.auth-icon').textContent = '⚠️';
-    elements.authStatus.querySelector('.auth-text').textContent = '認証切れ - 再ログインが必要';
-    elements.googleAuthBtn.style.display = 'block';
-    elements.googleAuthBtn.innerHTML = `
-        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" class="google-icon">
-        <span>再ログインしてアップロード</span>
-    `;
-
-    // Clear expired token
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
-    state.accessToken = null;
 }
 
 // ============================================
@@ -609,109 +597,59 @@ function initGoogleApi() {
     });
 }
 
-function handleGoogleAuth() {
-    if (!state.tokenClient) {
-        showToast('Google APIが初期化されていません', 'warning');
-        return;
-    }
-
-    // Check if we have a cached token first
-    const cachedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
-    if (cachedToken) {
-        try {
-            const tokenData = JSON.parse(cachedToken);
-            // Check if token is still valid (within 50 minutes, tokens last 60 min)
-            if (tokenData.expires_at && Date.now() < tokenData.expires_at) {
-                console.log('Using cached token');
-                state.accessToken = tokenData.access_token;
-                updateAuthUI();
-                return;
-            } else {
-                console.log('Cached token expired, requesting new one');
-                localStorage.removeItem(TOKEN_STORAGE_KEY);
-            }
-        } catch (e) {
-            console.error('Error parsing cached token:', e);
-            localStorage.removeItem(TOKEN_STORAGE_KEY);
-        }
-    }
-
-    // Request access token - use 'select_account' instead of 'consent' for smoother UX
-    state.tokenClient.requestAccessToken({ prompt: '' });
-}
-
 function handleTokenResponse(response) {
     if (response.error) {
         console.error('Token error:', response);
-        // If error, try again with consent prompt
-        if (state.tokenClient) {
-            console.log('Retrying with consent prompt...');
+        
+        // If folderSelectionMode, try with consent prompt
+        if (state.folderSelectionMode) {
+            console.log('Retrying with consent prompt for folder selection...');
             state.tokenClient.requestAccessToken({ prompt: 'consent' });
+            return;
+        }
+        
+        // If uploading, handle error
+        if (state.pendingUploadRecording) {
+            showToast('認証に失敗しました。ローカルに保存します。', 'error');
+            downloadRecording(state.pendingUploadRecording);
+            state.pendingUploadRecording = null;
+            updateStatus('完了', false);
+            clearPendingData();
         }
         return;
     }
 
     state.accessToken = response.access_token;
+    console.log('Token received successfully');
 
-    // Save token to localStorage with expiry (tokens last 60 minutes, save for 50)
-    const tokenData = {
-        access_token: response.access_token,
-        expires_at: Date.now() + (50 * 60 * 1000) // 50 minutes from now
-    };
-    localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokenData));
-    console.log('Token saved to localStorage');
-
-    updateAuthUI();
-    showToast('Googleアカウントに接続しました ✅');
-}
-
-function updateAuthUI() {
-    elements.authStatus.classList.add('connected');
-    elements.authStatus.querySelector('.auth-icon').textContent = '✅';
-    elements.authStatus.querySelector('.auth-text').textContent = '接続済み';
-    elements.googleAuthBtn.style.display = 'none';
-    elements.folderSelector.style.display = 'block';
-    elements.autoUploadToggle.style.display = 'block';
-
-    // Check if there's a pending recording to upload
-    if (state.pendingRecording) {
-        uploadPendingRecording();
+    // Check what mode we're in
+    if (state.folderSelectionMode) {
+        // Folder selection mode - open picker
+        state.folderSelectionMode = false;
+        openFolderPicker();
+    } else if (state.pendingUploadRecording) {
+        // Upload mode - proceed with upload
+        proceedWithUpload();
     }
 }
 
-async function uploadPendingRecording() {
-    if (!state.pendingRecording) return;
-
-    const recording = state.pendingRecording;
-    showToast('待機中の録音をアップロード中...', 'success');
-
+async function proceedWithUpload() {
+    if (!state.pendingUploadRecording) return;
+    
+    const recording = state.pendingUploadRecording;
+    
     try {
         await uploadToDrive(recording);
-        state.pendingRecording = null; // Clear after successful upload
+        showToast('録音が完了しました ✅');
     } catch (err) {
-        console.error('Failed to upload pending recording:', err);
-        showToast('アップロードに失敗しました', 'error');
+        console.error('Upload failed:', err);
+        showToast('アップロードに失敗しました。ローカルに保存します。', 'error');
+        downloadRecording(recording);
     }
-}
-
-function loadSavedToken() {
-    const cachedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
-    if (cachedToken) {
-        try {
-            const tokenData = JSON.parse(cachedToken);
-            if (tokenData.expires_at && Date.now() < tokenData.expires_at) {
-                console.log('Restored token from cache');
-                state.accessToken = tokenData.access_token;
-                updateAuthUI();
-            } else {
-                console.log('Cached token expired');
-                localStorage.removeItem(TOKEN_STORAGE_KEY);
-            }
-        } catch (e) {
-            console.error('Error loading cached token:', e);
-            localStorage.removeItem(TOKEN_STORAGE_KEY);
-        }
-    }
+    
+    state.pendingUploadRecording = null;
+    updateStatus('完了', false);
+    clearPendingData();
 }
 
 function openFolderPicker() {
@@ -744,6 +682,20 @@ function handleFolderSelection(data) {
         saveFolderToStorage(folder.id, folder.name);
 
         showToast(`フォルダ「${folder.name}」を選択しました ✅`);
+        
+        // If there's a pending upload, proceed
+        if (state.pendingUploadRecording) {
+            proceedWithUpload();
+        }
+    } else if (data.action === google.picker.Action.CANCEL) {
+        // User cancelled folder selection
+        if (state.pendingUploadRecording) {
+            showToast('フォルダ選択がキャンセルされました。ローカルに保存します。', 'warning');
+            downloadRecording(state.pendingUploadRecording);
+            state.pendingUploadRecording = null;
+            updateStatus('完了', false);
+            clearPendingData();
+        }
     }
 }
 

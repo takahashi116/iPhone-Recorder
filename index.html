@@ -63,34 +63,18 @@
         <section class="drive-section">
             <h2>📁 Google Drive 設定</h2>
 
-            <div class="auth-status" id="authStatus">
-                <span class="auth-icon">🔒</span>
-                <span class="auth-text">未接続</span>
+            <div class="selected-folder" id="selectedFolder">
+                <span class="folder-icon">📂</span>
+                <span class="folder-name">フォルダ未選択</span>
             </div>
 
-            <button class="google-btn" id="googleAuthBtn">
+            <button class="google-btn" id="selectFolderBtn">
                 <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google"
                     class="google-icon">
-                <span>Googleでログイン</span>
+                <span>アップロード先フォルダを選択</span>
             </button>
 
-            <div class="folder-selector" id="folderSelector" style="display: none;">
-                <div class="selected-folder" id="selectedFolder">
-                    <span class="folder-icon">📂</span>
-                    <span class="folder-name">フォルダ未選択</span>
-                </div>
-                <button class="select-folder-btn" id="selectFolderBtn">
-                    フォルダを選択
-                </button>
-            </div>
-
-            <div class="auto-upload-toggle" id="autoUploadToggle" style="display: none;">
-                <label class="toggle-label">
-                    <input type="checkbox" id="autoUploadCheck" checked>
-                    <span class="toggle-slider"></span>
-                    <span class="toggle-text">録音後に自動アップロード</span>
-                </label>
-            </div>
+            <p class="drive-hint">※ 録音終了後に毎回Google認証を行います</p>
         </section>
 
         <!-- Recordings List -->
