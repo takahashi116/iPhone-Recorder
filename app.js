@@ -546,8 +546,8 @@ function initGoogleApi() {
     if (GOOGLE_CLIENT_ID === 'YOUR_CLIENT_ID.apps.googleusercontent.com' ||
         GOOGLE_API_KEY === 'YOUR_API_KEY') {
         console.warn('Google API credentials not configured');
-        elements.googleAuthBtn.textContent = '⚠️ API未設定';
-        elements.googleAuthBtn.disabled = true;
+        elements.selectFolderBtn.querySelector('span').textContent = '⚠️ API未設定';
+        elements.selectFolderBtn.disabled = true;
         return;
     }
 
